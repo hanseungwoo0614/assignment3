@@ -1,0 +1,99 @@
+# 시나리오 1: 대기 취소 후 오래된 화면의 승인 (T10·U02)
+
+## 변경 전 applications
+  {"id":1,"event_id":1,"user_id":1,"status":"CANCELLED","created_at":"2026-11-22T08:34:11.026Z"}
+
+## 변경 전 history
+  {"id":1,"application_id":1,"actor_id":1,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":2,"application_id":1,"actor_id":1,"action":"CANCEL","from_status":"PENDING","to_status":"CANCELLED","reason":null,"cause_history_id":null}
+
+## manager1 POST /api/applications/1/approve
+{"status":409,"code":"INVALID_STATE"}
+
+## 변경 후 applications
+  {"id":1,"event_id":1,"user_id":1,"status":"CANCELLED","created_at":"2026-11-22T08:34:11.026Z"}
+
+## 변경 후 history 건수
+2
+
+# 시나리오 2: 정원 2명 행사에서 세 번째 승인 (T13)
+
+## charlie 신청 승인 시도
+{"status":409,"code":"CAPACITY_FULL"}
+
+## GET /api/events approvedCount
+  {"id":1,"capacity":2,"approvedCount":2}
+  {"id":2,"capacity":1,"approvedCount":0}
+
+## applications
+  {"id":1,"event_id":1,"user_id":1,"status":"APPROVED","created_at":"2026-11-22T08:34:11.069Z"}
+  {"id":2,"event_id":1,"user_id":2,"status":"APPROVED","created_at":"2026-11-22T08:34:11.080Z"}
+  {"id":3,"event_id":1,"user_id":5,"status":"PENDING","created_at":"2026-11-22T08:34:11.088Z"}
+
+# 시나리오 3-1: created_at이 다르면 더 이른 대기자 승급 (T18)
+
+## 승인 취소 전 applications
+  {"id":1,"event_id":2,"user_id":1,"status":"APPROVED","created_at":"2026-11-22T08:34:11.143Z"}
+  {"id":2,"event_id":2,"user_id":2,"status":"PENDING","created_at":"2026-11-02T00:00:00.000Z"}
+  {"id":3,"event_id":2,"user_id":5,"status":"PENDING","created_at":"2026-11-01T00:00:00.000Z"}
+
+## revoke 응답
+{"status":200,"revoked":{"id":1,"status":"REVOKED"},"promoted":{"id":3,"applicantName":"서연","status":"APPROVED"}}
+
+# 시나리오 3-2: created_at이 같으면 작은 ID 승급 (T19)
+
+## 승인 취소 전 applications
+  {"id":1,"event_id":2,"user_id":1,"status":"APPROVED","created_at":"2026-11-22T08:34:11.226Z"}
+  {"id":2,"event_id":2,"user_id":2,"status":"PENDING","created_at":"2026-11-01T00:00:00.000Z"}
+  {"id":3,"event_id":2,"user_id":5,"status":"PENDING","created_at":"2026-11-01T00:00:00.000Z"}
+
+## revoke 응답
+{"status":200,"promoted":{"id":2,"applicantName":"준호"}}
+
+## history
+  {"id":1,"application_id":1,"actor_id":1,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":2,"application_id":1,"actor_id":4,"action":"APPROVE","from_status":"PENDING","to_status":"APPROVED","reason":null,"cause_history_id":null}
+  {"id":3,"application_id":2,"actor_id":2,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":4,"application_id":3,"actor_id":5,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":5,"application_id":1,"actor_id":4,"action":"REVOKE","from_status":"APPROVED","to_status":"REVOKED","reason":"운영 사정으로 승인 취소","cause_history_id":null}
+  {"id":6,"application_id":2,"actor_id":4,"action":"AUTO_APPROVE","from_status":"PENDING","to_status":"APPROVED","reason":null,"cause_history_id":5}
+
+# 시나리오 4: 자동 승급 이력 저장 실패 → 전체 롤백 → 재시도 (T29)
+
+## 실패 주입 전 applications
+  {"id":1,"event_id":1,"user_id":1,"status":"APPROVED","created_at":"2026-11-22T08:34:11.301Z"}
+  {"id":2,"event_id":1,"user_id":2,"status":"PENDING","created_at":"2026-11-22T08:34:11.318Z"}
+
+## 실패 주입 전 history
+  {"id":1,"application_id":1,"actor_id":1,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":2,"application_id":1,"actor_id":3,"action":"APPROVE","from_status":"PENDING","to_status":"APPROVED","reason":null,"cause_history_id":null}
+  {"id":3,"application_id":2,"actor_id":2,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+
+## manager1 revoke (트리거 활성)
+{"status":500,"code":"INTERNAL_ERROR"}
+
+## 실패 후 applications
+  {"id":1,"event_id":1,"user_id":1,"status":"APPROVED","created_at":"2026-11-22T08:34:11.301Z"}
+  {"id":2,"event_id":1,"user_id":2,"status":"PENDING","created_at":"2026-11-22T08:34:11.318Z"}
+
+## 실패 후 history
+  {"id":1,"application_id":1,"actor_id":1,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":2,"application_id":1,"actor_id":3,"action":"APPROVE","from_status":"PENDING","to_status":"APPROVED","reason":null,"cause_history_id":null}
+  {"id":3,"application_id":2,"actor_id":2,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+
+## 요청 전과 동일한가
+true
+
+## 트리거 제거 후 재시도
+{"status":200,"revoked":"REVOKED","promoted":{"id":2,"status":"APPROVED"}}
+
+## 재시도 후 applications
+  {"id":1,"event_id":1,"user_id":1,"status":"REVOKED","created_at":"2026-11-22T08:34:11.301Z"}
+  {"id":2,"event_id":1,"user_id":2,"status":"APPROVED","created_at":"2026-11-22T08:34:11.318Z"}
+
+## 재시도 후 history
+  {"id":1,"application_id":1,"actor_id":1,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":2,"application_id":1,"actor_id":3,"action":"APPROVE","from_status":"PENDING","to_status":"APPROVED","reason":null,"cause_history_id":null}
+  {"id":3,"application_id":2,"actor_id":2,"action":"APPLY","from_status":null,"to_status":"PENDING","reason":null,"cause_history_id":null}
+  {"id":4,"application_id":1,"actor_id":3,"action":"REVOKE","from_status":"APPROVED","to_status":"REVOKED","reason":"운영 사정으로 승인 취소","cause_history_id":null}
+  {"id":5,"application_id":2,"actor_id":3,"action":"AUTO_APPROVE","from_status":"PENDING","to_status":"APPROVED","reason":null,"cause_history_id":4}
